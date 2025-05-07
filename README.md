@@ -16,7 +16,6 @@ NBR100V2：https://www.netcoretec.com/service-support/download/firmware/2706.htm
 
 NBR200V2：https://www.netcoretec.com/service-support/download/firmware/2705.html
 
-POWER13：[https://www.netcoretec.com/service-support/download/firmware/2700.html](https://www.netcoretec.com/service-support/download/firmware/2700.html)
 
 因硬件模拟有限（使用qemu模拟和openwrt的malta内核），无法对NAP930和NAP830进行模拟验证，但其代码中确实存在该漏洞。**如需展示模拟步骤，可告知我补充。**
 
