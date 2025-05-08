@@ -16,7 +16,10 @@ NBR100V2：https://www.netcoretec.com/service-support/download/firmware/2706.htm
 
 NBR200V2：https://www.netcoretec.com/service-support/download/firmware/2705.html
 
+<<<<<<< HEAD
 ## II. Vulnerability Causes
+=======
+>>>>>>> c603ffa0811d316481bad5045b4ff202e6e4050f
 
 The firmware of these routers uses the `uhttpd` + `ubus` architecture.
 
